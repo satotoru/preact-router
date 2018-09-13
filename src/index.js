@@ -1,5 +1,5 @@
 import { cloneElement, h, Component } from 'preact';
-import { exec, prepareVNodeForRanking, assign, pathRankSort } from './util';
+import { exec, prepareVNodeForRanking, assign, pathRankSort, segmentize } from './util';
 
 let customHistory = null;
 
@@ -8,6 +8,8 @@ const ROUTERS = [];
 const subscribers = [];
 
 const EMPTY = {};
+
+export const PREACT_ROUTER_BASE = "preact-router-base";
 
 function isPreactElement(node) {
 	return node.__preactattr_!=null || typeof Symbol!=='undefined' && node[Symbol.for('preactattr')]!=null;
@@ -146,17 +148,35 @@ function initEventListeners() {
 
 
 class Router extends Component {
-	constructor(props) {
+	constructor(props, context) {
 		super(props);
+		this.baseUrl = props.base || '';
+		if (props.path) {
+			let segments = segmentize(props.path);
+			segments.forEach(segment => {
+				if (segment.indexOf(':') == -1) {
+					this.baseUrl = this.baseUrl + '/' + segment;
+				}
+			});
+		}
 		if (props.history) {
 			customHistory = props.history;
 		}
-
+		if (context && context[PREACT_ROUTER_BASE] && !this.props.base) {
+			this.baseUrl = context[PREACT_ROUTER_BASE] + this.baseUrl;
+		}
 		this.state = {
 			url: props.url || getCurrentUrl()
 		};
 
 		initEventListeners();
+	}
+
+	getChildContext() {
+		const ret = {
+			[PREACT_ROUTER_BASE]: this.baseUrl
+		};
+		return ret;
 	}
 
 	shouldComponentUpdate(props) {
@@ -213,7 +233,8 @@ class Router extends Component {
 			.filter(prepareVNodeForRanking)
 			.sort(pathRankSort)
 			.map( vnode => {
-				let matches = exec(url, vnode.attributes.path, vnode.attributes);
+				const path = this.baseUrl + vnode.attributes.path;
+				let matches = exec(url, path, vnode.attributes);
 				if (matches) {
 					if (invoke !== false) {
 						let newProps = { url, matches };
